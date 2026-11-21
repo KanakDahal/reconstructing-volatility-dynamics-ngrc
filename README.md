@@ -2,7 +2,7 @@
 
 Research workspace for the dissertation: a simulation-based certification study of learned volatility dynamics (working title; final title TBD).
 
-Status: **H1 certification run complete under the frozen protocol; second-model certification in progress.**
+Status: **H1 certification run complete under the frozen protocol; cell 5 re-scored under the analytical recovery target; second-model certification in progress.**
 
 ## Contents
 - `code/garch_ngrc_pilot.py` - GARCH(1,1) control pilot for Objective 1 / H1 (NG-RC Jacobian spectral radius vs known alpha+beta).
@@ -13,10 +13,9 @@ Status: **H1 certification run complete under the frozen protocol; second-model 
 ## Where the study stands (Nov 21, 2026)
 - The H1 protocol is locked: five frozen cells (four GARCH(1,1) persistence levels + one Guyon-Lekeufack path-dependent generator), 1500 replications each, pass iff the one-sided lower 95% Clopper-Pearson bound on the in-band rate exceeds 0.90 (critical count 1370/1500). Frozen code and raw results live in the private working repo; this repo carries the pilot and the dissertation text.
 - Result, stated plainly: NG-RC fails the locked band on all five cells in this experiment. The GARCH QMLE positive control on the same G-L data shows the same direction of bias, so the bias is not unique to NG-RC in this experiment. No stronger claim is made.
-- The recovery target for the G-L cell (p*) is now derived analytically - a first-order linearisation of the generator around its stationary point (front_matter, Section 3.1) - replacing the earlier reference-simulation measurement.
+- The recovery target for the G-L cell (p*) is derived analytically - a first-order linearisation of the generator around its stationary point (front_matter, Section 3.1) - replacing the earlier reference-simulation measurement: p* = 0.9988074336869 (`code/h1_gl_pstar.py`, verified by two independent methods to 13 decimals). Re-scoring cell 5 under this target (`code/h1_gl_cell5_rescore.py`, results in `results/h1_gl_cell5_pstar_*`): 0/1500, closest replication 51x outside the locked band - verdict unchanged, now against a noise-free target.
 
 ## In progress
-- Recompute p* from the analytical formula and re-run cell 5 under the unchanged locked protocol.
 - Certify a second model under the same frozen protocol: HAR-RV (the econometric RV benchmark) and a small MLP (learned-forecaster comparison). LSTM deferred to a post-exam stretch.
 
 ## Reproduce the pilot
