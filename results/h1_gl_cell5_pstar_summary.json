@@ -1,0 +1,24 @@
+{
+  "cell": 5,
+  "generator": "guyon_lekeufack",
+  "criterion": "0<rho<1 and |rho-p*| <= 0.10*(1-p*); supported iff one-sided CP-95% lower bound > 0.90 (critical 1370/1500)",
+  "p_star_old_refsim": 0.9975521276790771,
+  "p_star_new_analytical": 0.998807433686913,
+  "margin_new": 0.00011925663130869514,
+  "band_new": [
+    0.9986881770556043,
+    0.9989266903182218
+  ],
+  "n_reps": 1500,
+  "n_success_new": 0,
+  "cp95_lower_new": 0.0,
+  "supported_new": false,
+  "n_success_old": 0,
+  "rho_hat_mean": 0.971374197876091,
+  "rho_hat_sd": 0.008372491672896682,
+  "rho_hat_min": 0.9318728243391121,
+  "rho_hat_max": 0.9926913930234509,
+  "min_abs_error_to_new_pstar": 0.006116040663462163,
+  "equivalence_note": "p* enters scoring only; all seeds frozen, so a literal re-run reproduces these rho_hat values bit-for-bit. This re-score is the re-run outcome.",
+  "verdict": "cell 5 NOT supported under the analytical target (0/1500; mean bias -0.0274)"
+}
