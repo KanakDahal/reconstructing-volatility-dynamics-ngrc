@@ -1,0 +1,1424 @@
+% =====================================================================
+%  Dissertation front matter -- Kanak Chandra Dahal
+%  Order: Abstract, Introduction, Literature Review, Methodology,
+%  Objectives & Hypotheses, References (dissertation_refs.bib, all
+%  entries verified against Crossref / arXiv / publisher records on
+%  19 Nov 2026).
+%  Compile: pdflatex -> bibtex -> pdflatex -> pdflatex
+% =====================================================================
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{times}
+
+\usepackage{graphicx}
+\usepackage{natbib}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\title{\Large\bfseries Reconstructing Volatility Dynamics with Next
+Generation Reservoir Computing:\\ A Simulation-Based Certification Study}
+\author{Kanak Chandra Dahal\\
+\small Atma Ram Sanatan Dharma College, University of Delhi, New Delhi}
+\date{}
+
+\begin{document}
+\maketitle
+
+% =====================================================================
+\begin{abstract}
+\noindent Financial volatility is persistent, asymmetric and partly driven
+by the whole history of prices, yet most learned models of it are judged
+only by how small their forecast error is. A model can forecast well and
+still fail to represent the dynamics it has been fitted to. This
+dissertation treats that gap directly. It asks whether Next Generation
+Reservoir Computing (NG-RC), a data-efficient nonlinear model built from
+polynomial features of delayed inputs, can reconstruct the effective
+dynamics of volatility rather than merely predict its next value. NG-RC
+is the first test case; the certification protocol itself is
+model-agnostic and applies to any learned model of the dynamics. The
+approach is a certification study. On synthetic data from processes whose
+parameters are known, the trained model is tested against locked
+acceptance criteria fixed before the data are generated, so that success
+and failure are decided by the protocol and not adjusted afterwards. The
+learned dynamics are then examined through their Jacobian: relaxation
+times, stability and memory structure are read off the model itself and
+compared with the known truth. Only after this controlled stage does the
+work turn to realised volatility from market data, benchmarked against
+HAR-RV, GJR-GARCH and standard machine-learning models. The aim is a modest but useful one: to find out
+what a simple nonlinear model can and cannot recover about volatility
+dynamics, with the failures measured as carefully as the successes.
+\end{abstract}
+
+\newpage
+
+% =====================================================================
+\section{Introduction}
+
+Volatility is the quantity that matters for risk, and it is also the
+quantity we cannot observe directly. Prices are recorded; volatility has
+to be estimated, modelled, or inferred from options. Over sixty years of
+empirical work have produced a stable list of things any serious model of
+volatility must reproduce: returns are essentially unpredictable in sign,
+but their magnitude is predictable; large moves cluster; the memory of
+shocks decays very slowly; and losses move future volatility more than
+gains of the same size \citep{mandelbrot1963,cont2001,ding1993,
+bekaertwu2000}. The econometric tradition answers these facts with
+parametric models, from ARCH and GARCH to the HAR family
+\citep{engle1982,bollerslev1986,corsi2009}. The machine-learning tradition
+answers them with flexible function approximators that often forecast
+better \citep{bucci2020,christensen2023}.
+
+Both traditions, however, share a habit that this dissertation questions:
+models are evaluated almost entirely by forecast error. Forecast error is
+a weak test of understanding. A model can achieve a low one-step error
+while having completely wrong dynamics, and the difference becomes visible
+only when the model is run autonomously, fed with its own output, or asked
+to reproduce a quantity it was not directly trained on. For physical
+systems this distinction is standard. Nobody would accept a climate model
+that fits last week's temperature but produces the wrong seasonal cycle.
+For volatility the distinction is rarely enforced, partly because the true dynamics are unknown and no clean experiment seems possible.
+
+What ``the dynamics'' means for a stochastic process is worth one
+sentence of care. The object is the conditional rule: given where the
+system is now, the distribution of its next step is fixed. A GARCH
+recursion is such a rule, and so is the path-dependent functional of
+Section~2. Run forward, the rule generates every property of the
+process, its persistence, its memory, its asymmetry. Reconstructing the
+dynamics means recovering that rule from data, not merely fitting the
+next value; and the rule is read off the trained model through exactly
+the objects a physicist would use, the Jacobian and its spectra.
+
+One can push back: if a model already forecasts with minimal error, why test anything else? Because one-step forecasts of daily realised volatility are nearly free. The series is so strongly autocorrelated that even a na\"ive forecast scores well, and forecast losses are too noisy to separate models reliably, which is why the benchmarking literature is full of close races and statistical ties \citep{grigoryeva2014,li2026,kilic2025}. The uses that matter depend on the dynamics themselves. Multi-day value-at-risk and stress tests compound the model over the horizon, so wrong persistence gives the wrong term structure of risk. Option prices depend on the distribution of the whole volatility path, not on point forecasts. And regime monitoring needs a notion of stability, which is a property of the dynamics, not of a forecast.
+
+The way around this is to build the experiment artificially. If we
+simulate a process whose dynamics are known exactly, fit a model to the
+simulated data, and then ask what the model has learned, the gap between
+learned and true dynamics can be measured rather than argued about. This
+is the certification idea at the centre of the dissertation. The test is
+fixed in advance: the acceptance criterion, the tolerance and the number
+of replications are locked before any test data are generated, and the
+model is not retuned afterwards. A model either passes the locked test or
+it does not. At $n = 1{,}500$ replications the choice of confidence
+bound is not cosmetic: a point estimate near the boundary can look
+acceptable under a normal approximation while the exact binomial lower
+bound still falls short. Under a locked protocol the exact bound is the
+only defensible choice: the criterion is fixed in advance, and the
+uncertainty of the pass rate itself is accounted for without
+approximation. This design converts a vague question, whether a learned
+model captures the dynamics, into a controlled experiment with a
+pre-registered answer scale.
+
+What should the locked test measure? A forecast error would only repeat
+the usual mistake. The test should instead target an invariant: a number
+fixed by the data-generating process, independent of any single
+realisation. For a variance process the most basic invariant is
+persistence, the rate at which a shock to volatility decays. In the
+GARCH control it is exactly $\alpha+\beta$, and it fixes the relaxation
+time over which the process forgets a shock. A learned model implies its
+own persistence through the spectrum of its Jacobian, so the comparison
+between learned and true dynamics reduces, in the first instance, to a
+comparison of two numbers that are both known precisely. Later
+invariants, the asymmetry of the response, the decay of memory, the
+scaling of increments, follow the same pattern: each is a property of
+the process, stated before the experiment, checked after it.
+
+The model under examination is Next Generation Reservoir Computing
+\citep{gauthier2021}. Reservoir computing in its classical form trains
+only a linear readout on the states of a fixed random recurrent network
+\citep{jaegerhaas2004,lukosevicius2009}; NG-RC removes the random network
+altogether and constructs the state directly from delayed inputs and their
+polynomial combinations. The result is a model that is nonlinear in the
+data but linear in its parameters, trained by ridge regression in
+closed form in seconds, with trained coefficients that can be read and
+interpreted. This makes it
+an unusually transparent candidate for reconstruction: the learned map is
+explicit, and its Jacobian, the object through which relaxation times and
+stability are computed, is available in closed form. NG-RC has matched
+much larger models on chaotic benchmarks \citep{pathak2018,vlachas2020},
+and reservoir methods have reached financial time series
+\citep{grigoryeva2014,dossantos2025,li2026}, but the question asked here
+has not been asked of it: not how well it forecasts volatility, but
+whether what it learns is, in any defensible sense, the dynamics of
+volatility.
+
+Two questions organise the work. First, on controlled systems: does the
+learned model, run on its own, reproduce the physical signatures of
+volatility, meaning its relaxation timescales, its memory and scaling, and
+its asymmetric response to gains and losses? Second, on the learned
+dynamics themselves: does their stability, measured through the Jacobian,
+carry information about changes in market regime at daily frequency?
+The first
+question is answered entirely on synthetic data, where truth is known.
+The second moves to market data, and is meaningful only to the
+extent that the first has established what the method can recover.
+
+The dissertation is therefore best read as a measurement study. Its
+contribution is not a new forecasting model but a way of testing learned
+models against known dynamics, together with a concrete map of where one
+simple, interpretable nonlinear model succeeds and where it fails.
+Three things come out of the design: a certification protocol that any
+learned model of the dynamics can be subjected to; a measurement of what
+NG-RC in particular recovers and where it fails; and, when it fails, a
+repair experiment in which candidate fixes are varied one at a time and
+re-certified under the same locked criteria. The
+literature review that follows collects the facts the model must
+reproduce, the econometric and machine-learning benchmarks it must be
+compared with, and the tools from nonlinear time series analysis through
+which the comparison is made. The methodology section then builds the
+experiment itself: the simulated ground truth, the locked acceptance
+test, the diagnostics and the repair design. The final section states
+the objectives and hypotheses precisely.
+
+\newpage
+
+% =====================================================================
+\section{Literature Review}
+
+\subsection{Stylised facts of volatility}
+
+It is impossible to predict the direction in which prices will change, but
+their magnitude can be predicted. As early as 1963, Mandelbrot noticed
+that price moves were characterized by heavy-tailed distributions and
+clustered large movements, and \citet{cont2001} later collected this and
+other regularities into the standard list of stylised facts. For liquid
+assets, with $r_t = \log P_t - \log P_{t-1}$, the autocorrelation
+$\mathrm{Corr}(r_t, r_{t-k})$ is essentially zero at any lag $k \neq 0$,
+while $\mathrm{Corr}(|r_t|, |r_{t-k}|)$ stays positive for a long time;
+squared returns behave the same way. Yesterday's direction says nothing
+about today's direction, but yesterday's magnitude says something about
+today's variance. This is volatility clustering. The raw returns are
+also heavy-tailed: their kurtosis far exceeds the Gaussian value, most
+strongly at short horizons, and the excess shrinks under temporal
+aggregation, exactly what a mixture of Gaussian shocks with
+time-varying variance would produce \citep{cont2001}. The tails are
+close to power laws, with tail indices near three across many markets,
+a regularity stable enough to have earned a name, the inverse cubic
+law \citep{cont2001}.
+
+\citet{ding1993} examined powers of absolute returns and showed that the
+autocorrelation of $|r_t|^d$ decays extremely slowly, particularly at
+$d=1$. This property is called long memory, though its precise meaning
+varies with the process and the estimator used. The statistical question
+goes back to \citet{hurst1951}, whose rescaled-range analysis of reservoir
+storage introduced the Hurst exponent, and to
+\citet{grangerjoyeux1980}, who gave long memory a parametric form through
+fractional differencing. \citet{lo1991} later warned how easily spurious
+long memory can be read into stock prices, a warning any measurement of
+memory has to respect. Formally, the slow decay is often written as a power law,
+$\mathrm{Corr}(|r_t|, |r_{t-k}|) \sim k^{-\gamma}$ with a small exponent
+$\gamma$, in contrast to the exponential decay $p^{k}$ that a
+finite-state linear model produces. Either way, a model must create
+persistence over long horizons without giving equal weight to all old
+shocks. Figure~\ref{fig:garch} shows clustering in a controlled example:
+a simulated GARCH$(1,1)$ path, in which calm and turbulent periods
+alternate even though the mechanism is a single equation.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.9\textwidth]{figs/fig_garch.pdf}
+\caption{A simulated GARCH$(1,1)$ path ($\omega = 4\times10^{-6}$,
+$\alpha = 0.06$, $\beta = 0.93$). Top: daily returns $r_t = \sigma_t
+z_t$. Bottom: the conditional standard deviation $\sigma_t$. Large moves
+cluster in time even though the shocks $z_t$ are independent; the
+clustering is generated entirely by the variance recursion.}
+\label{fig:garch}
+\end{figure}
+
+The second regularity is the leverage effect: losses increase future
+volatility more than profits of equal size \citep{bekaertwu2000,
+bouchaud2001}. The typical argument is that a drop in a company's stock
+increases its leverage and makes the shares riskier, but the mechanism is
+more complicated, and \citet{bekaertwu2000} argue for an alternative
+volatility-feedback explanation. The mechanism does not matter here; what
+matters is that the regularity exists. \citet{bouchaud2001} further found
+that the reaction is lagged, so that past returns affect volatility
+through time, which one can write schematically as
+\begin{equation}
+v_t = c + \sum_{j \geq 1} g_j\,(r_{t-j}),
+\end{equation}
+with $v_t$ a volatility parameter, $g_j$ the impact of the return $j$
+periods ago, and $c$ a constant. This is a generalized distributed lag,
+not an equation from either paper. Two further regularities complete the working list. Volatility itself
+is asymmetric in its own moves: it rises faster after losses than it
+falls after gains, so the volatility of volatility is not symmetric
+either. And under temporal aggregation the whole structure relaxes
+towards Gaussianity, so whatever mechanism one proposes must also
+explain why the facts fade at lower frequencies \citep{cont2001}. Taken
+together, clustering, long
+memory and leverage say that volatility is determined by the entire price
+history, not just the most recent return.
+
+\subsection{The early econometric models}
+
+The first econometric answer to clustering was ARCH \citep{engle1982}.
+Writing $r_t = \sigma_t z_t$ with $z_t$ zero-mean and unit-variance, the
+conditional variance is built from lagged squared returns,
+\begin{equation}
+\sigma_t^2 = \omega + \sum_{i=1}^{q} \alpha_i\, r_{t-i}^2 .
+\end{equation}
+\citet{bollerslev1986} added lagged variance to get GARCH:
+\begin{equation}
+\sigma_t^2 = \omega + \alpha r_{t-1}^2 + \beta \sigma_{t-1}^2,
+\end{equation}
+where $\omega > 0$ is constant, $\alpha$ the reaction to the most recent
+squared return and $\beta$ the reaction to past variance. Iterating the recursion shows what the parameters mean. The
+unconditional variance is $\bar\sigma^2 = \omega/(1-\alpha-\beta)$,
+finite only when $\alpha+\beta<1$; in that case the process is
+covariance-stationary and the effect of a single shock decays
+geometrically, like $(\alpha+\beta)^k$. The sum $\alpha+\beta$ is
+therefore the persistence of the process, and the half-life of a shock,
+$\ln(1/2)/\ln(\alpha+\beta)$, grows without bound as the sum approaches
+one. Typical daily estimates sit between $0.95$ and $0.995$, so a shock
+takes weeks to months to halve. At the boundary $\alpha+\beta=1$ the
+model becomes integrated GARCH, in which shocks never die, and the data
+live close enough to that boundary that very persistent and permanent
+are hard to tell apart with finite samples. Since nothing enters except squared
+returns, plain GARCH is indifferent to the sign of the return. This was
+fixed by Nelson's E-GARCH \citep{nelson1991} and by
+\citet{gjr1993}, whose form is
+\begin{equation}
+\sigma_t^2 = \omega + \alpha r_{t-1}^2
++ \gamma\, \mathbf{1}_{\{r_{t-1} < 0\}}\, r_{t-1}^2
++ \beta \sigma_{t-1}^2 ,
+\end{equation}
+so that $\gamma > 0$ adds an extra effect of negative returns on the
+conditional variance, the leverage effect that simple GARCH misses.
+\citet{engleng1993} summarised this asymmetry through the news impact
+curve, the map from yesterday's return to today's variance, and showed
+that it is steeper for negative returns than for positive ones
+(Figure~\ref{fig:news}). Nelson's EGARCH \citep{nelson1991} builds the
+same effect in logarithms,
+\begin{equation}
+\log \sigma_t^2 = \omega + \beta \log \sigma_{t-1}^2
++ \alpha \left(|z_{t-1}| - \mathbb{E}|z|\right) + \gamma z_{t-1},
+\end{equation}
+which keeps the variance positive by construction and lets the sign of
+the shock enter through $\gamma$. All of these models are estimated the
+same way, by maximising a Gaussian quasi-likelihood; the estimates stay
+consistent and asymptotically normal even when the true innovations are
+not Gaussian, which is what makes the whole family practical
+\citep{bollerslevwooldridge1992}.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.62\textwidth]{figs/fig_news.pdf}
+\caption{News impact curves for two variance recursions with the same
+persistence. Plain GARCH responds only to the size of the shock; the
+GJR form responds more strongly to negative returns, the leverage
+asymmetry observed in equity data \citep{gjr1993,engleng1993}.}
+\label{fig:news}
+\end{figure}
+Long memory entered the same family through the fractionally integrated
+FIGARCH model of \citet{baillie1996}, in which the geometric decay of
+the GARCH recursion is replaced by the hyperbolic weights of a
+fractionally differenced shock, $(1-L)^{d}$ with $0 < d < 1$. \citet{englepatton2001} give a
+sober assessment of what these models are and are not good for, and
+\citet{taylor2007} remains a standard reference for the wider
+econometrics of financial time series. These models showed that
+volatility is a dynamic process rather than a sum of recent shocks, but
+their functional form is fixed in advance.
+
+\subsection{Realised volatility and the HAR family}
+
+Daily closing prices only record the difference between two points in
+time. \citet{andersen2003} recommended constructing the variance from
+intraday returns instead. If $r_{t,j}$ is the $j$-th intraday return on
+day $t$ and $M$ the number of intraday returns,
+\begin{equation}
+RV_t = \sum_{j=1}^{M} r_{t,j}^2,
+\qquad
+BV_t = \frac{\pi}{2}\,\frac{M}{M-1}\sum_{j=2}^{M} |r_{t,j}|\,|r_{t,j-1}| .
+\end{equation}
+Realised volatility is usually taken as $\sqrt{RV_t}$, though parts of the
+literature call the variance itself ``realised volatility.'' Unlike the
+squared daily return, $RV_t$ sees the variation inside the day even when
+it cancels out by the close. Formally, as the sampling frequency grows, $RV_t$
+converges to the integrated variance of the day, the time integral of
+$\sigma^2(u)$ over trading hours, so realised volatility is a
+measurement of the latent process rather than a model of it.
+\citet{bn2004} tied realised variance to the
+quadratic variation of the price process and introduced bipower variation,
+which estimates the integrated continuous variance even in the presence of
+finite-activity jumps. The approach had been prepared by
+\citet{andersen1998} and \citet{andersen2001}, who answered the early
+scepticism about GARCH-type models by showing that they forecast well
+once volatility is measured properly, and
+by \citet{hansenlunde2006}, who mapped out how microstructure noise
+corrupts the intraday measurement and how to limit the damage. Their
+lesson survives in the working practice of the field: sample sparsely
+enough that the noise does not dominate, and treat the realised measure
+itself as an estimate with error, an honesty that later forecast
+comparisons must inherit \citep{patton2011}.
+
+On top of this measurement, \citet{corsi2009} built the heterogeneous
+autoregressive model HAR-RV, motivated by market participants acting on
+different horizons:
+\begin{equation}
+RV_{t+1} = \beta_0 + \beta_d RV_t + \beta_w RV_t^{(w)}
++ \beta_m RV_t^{(m)} + \varepsilon_{t+1},
+\end{equation}
+\begin{equation}
+RV_t^{(w)} = \frac{1}{5}\sum_{j=0}^{4} RV_{t-j},
+\qquad
+RV_t^{(m)} = \frac{1}{22}\sum_{j=0}^{21} RV_{t-j}.
+\end{equation}
+The model is linear with only a handful of parameters, yet it reproduces
+most of the persistence of volatility, which is why it is the benchmark
+of the field. The three terms form a crude cascade: each horizon's
+coefficient loads on a different timescale, and the fitted sum
+$\beta_d+\beta_w+\beta_m$ is typically close to one. A sum of a few
+exponential decays can imitate a power law over the observed range of
+lags, which is how HAR mimics long memory with four parameters. It has
+no true long memory; it mimics long memory through
+three horizons (Figure~\ref{fig:har}). Later work keeps the structure and changes the
+information.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.8\textwidth]{figs/fig_har.pdf}
+\caption{The HAR-RV structure of \citet{corsi2009}. Tomorrow's realised
+variance is a linear combination of yesterday's value, last week's
+average and last month's average. Three horizons, four parameters, and
+most of the persistence of the data.}
+\label{fig:har}
+\end{figure} \citet{pattonsheppard2015} split realised variation by the
+sign of returns and showed that the components carry different information
+about future volatility. \citet{harq2016} introduced the HARQ model, in
+which the weight on daily variation depends on its own measurement error.
+\citet{shephardsheppard2010} proposed the HEAVY family, which lets
+realised measures follow their own GARCH-type recursion rather than
+serving only as regressors, so that the measurement and its dynamics are
+modelled together.
+
+\subsection{Path-dependent and rough volatility}
+
+\citet{guyonlekeufack2023} take a different route in ``Volatility is
+(mostly) path-dependent.'' The history of index returns explains about
+90\% of the variability of equity-index implied volatility and about 65\%
+of the variability of noisy estimates of future realised daily volatility.
+These numbers measure path dependence, not predictability of returns.
+Their model is linear in two path functionals, one signed and one
+built from magnitudes:
+\begin{equation}
+\sigma_t = \beta_0 + \beta_1 R_{1,t} + \beta_2 \sqrt{R_{2,t}},
+\qquad
+R_{1,t} = \sum_{j \geq 1} K^{(1)}_j\, r_{t-j}, \qquad
+R_{2,t} = \sum_{j \geq 1} K^{(2)}_j\, r_{t-j}^2 ,
+\end{equation}
+with kernels given by shifted power laws over a range of memory lengths,
+$\beta_1 < 0$ for leverage and $\beta_2 > 0$ for clustering. The
+magnitude of past moves enters through the square root of a
+kernel-weighted sum of squared returns, so the model is linear in a
+volatility scale rather than in squared returns themselves. Volatility
+is thus mostly a functional of how the market arrived at its present
+state. The kernels $K^{(1)}$ and $K^{(2)}$ decay as shifted power
+laws, so influence decays slowly but not uniformly: recent days matter
+more, yet months-old moves still enter.
+
+\citet{gatheral2018} arrive at a matching conclusion from a different
+direction. Measuring the scaling of log-volatility increments, they find
+$\mathbb{E}\,|\log\sigma_{t+\Delta}-\log\sigma_t|^{q} \propto
+\Delta^{qH}$ with $H$ near $0.1$, far below the $H = 1/2$ of Brownian
+motion. Modelling log-volatility as a fractional Ornstein--Uhlenbeck
+process, $dX_t = -\kappa X_t\,dt + \nu\,dW_t^{H}$, reproduces the
+scaling, and the pricing side of the same idea is developed by
+\citet{bayer2016}, whose rough Heston model drives the variance with
+fractional noise and derives its characteristic function from a
+fractional Riccati equation, keeping the model tractable for option
+pricing. Fractional noise with $H > 1/2$ is also the classical
+route to long memory in stochastic volatility
+\citep{comterenault1998}; roughness and long memory are the two ends of
+the same dial. Small $H$ and power-law kernels are two descriptions of
+one fact: volatility forgets its past neither quickly nor uniformly, and
+the memory kernel matters more than any finite list of lags.
+Figure~\ref{fig:kernel} makes the point concretely: over a year of daily
+lags, a power-law kernel still assigns visible weight to months-old
+moves where a geometric, GARCH-like kernel has already forgotten them.
+Figure~\ref{fig:rough} shows the scaling measurement itself on synthetic
+paths whose roughness is known: the fitted slopes recover the true
+exponents, which is what makes the empirical finding $H \approx 0.1$
+believable.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.7\textwidth]{figs/fig_kernel.pdf}
+\caption{Normalised weights on past returns for two power-law kernels
+and a geometric kernel with persistence $0.95$, on a log--log scale.
+Geometric decay is indistinguishable from a power law over the first few
+weeks and then falls off far faster; long-memory behaviour is precisely
+what lives in the tail of this plot.}
+\label{fig:kernel}
+\end{figure}
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.62\textwidth]{figs/fig_rough.pdf}
+\caption{The signature plot behind rough volatility, computed here on
+two simulated paths whose Hurst exponents are known. The mean absolute
+increment grows as a power of the lag, and the fitted slopes recover
+$H = 0.1$ and $H = 1/2$ respectively. On market log-volatility the
+same measurement gives slopes near $0.1$ \citep{gatheral2018}.}
+\label{fig:rough}
+\end{figure}
+
+\subsection{Option-implied volatility}
+
+Options give a second, forward-looking observation of volatility. The
+pricing framework of \citet{blackscholes1973} and \citet{merton1973}
+turns an option price into an implied volatility by inversion, and
+\citet{heston1993} gave the standard stochastic-volatility correction
+with its closed-form characteristic function. Implied volatilities vary
+across strikes and maturities in a surface with its own stable shape
+\citep{gatheral2006}, and the SVI parametrisation of
+\citet{gatheraljacquier2014} gives each maturity slice a parsimonious
+form with checkable arbitrage conditions. In its raw form the total
+implied variance at log-moneyness $k$ is
+\begin{equation}
+w(k) = a + b\left(\rho\,(k-m) + \sqrt{(k-m)^2 + s^2}\right),
+\end{equation}
+five parameters per maturity slice, and the absence of butterfly and
+calendar arbitrage translates into explicit inequalities on them. The implied surface lives under
+the risk-neutral measure, realised volatility under the real-world one,
+and the difference between the two is the volatility risk premium: the
+compensation investors demand for bearing volatility risk, which makes
+implied volatility sit systematically above realised volatility on
+average. The premium is not noise; it is a priced, persistent object
+with its own dynamics. Checking a reconstruction claim on both sides is
+the natural extension of the present framework; this dissertation works
+entirely on the real-world side, and the risk-neutral side is left to
+future work.
+
+\subsection{Machine learning for volatility}
+
+Machine learning entered volatility modelling mainly through forecasting.
+\citet{bucci2020} applied neural networks to realised volatility, and
+\citet{christensen2023} compared regularised regressions, trees and
+neural networks against HAR models. Flexible models could beat HAR even
+when fed only lagged daily, weekly and monthly realised variances, with
+larger advantages at longer horizons, where nonlinear mappings represent
+persistence better. Their variable-importance analysis is just as
+instructive: most of the predictable structure sits in the same daily,
+weekly and monthly aggregates that HAR already uses, so the nonlinear
+models add shape to the response rather than new information. Recurrent architectures such as the LSTM
+\citep{lstm1997} are the natural deep-learning candidates for such data:
+their gated state is designed to carry information over long horizons,
+which is exactly what volatility demands. HARNet \citep{harnet2022} and
+DeepVol \citep{deepvol2024} build the multiple time scales directly into
+the architecture, using dilated convolutions whose receptive field spans
+daily to monthly lags, a neural echo of the HAR cascade. The
+evidence is not one-sided: \citet{kilic2025}, in a Federal Reserve study
+comparing HAR, ARFIMA and regime-switching HAR variants with gradient
+boosting and several neural architectures on S\&P~500 and equity-level
+realised volatility, find that machine learning sometimes improves on HAR
+but does not systematically beat the broader econometric set, and that
+rankings depend on the asset, horizon, estimation window and loss
+function. Where the machines do win, they win by little; where they
+lose, the loss is systematic. Flexibility alone is not an argument. \citet{horvath2021} use
+networks differently, as fast proxies for calibrating rough volatility
+models, without changing the underlying mathematics. Machine learning can
+improve forecasting, accelerate existing models, or find structure; this
+dissertation is concerned with the third use.
+
+\subsection{Reservoir computing and NG-RC}
+
+Reservoir computing is another option. In the echo state networks of
+Jaeger and the liquid state machines of \citet{maass2002}, a fixed,
+randomly wired recurrent network maps the input series into
+high-dimensional states and only the output weights are trained
+\citep{jaegerhaas2004,lukosevicius2009,nakajima2021}. In equations, an echo state network keeps a state
+$\mathbf{x}(t) = f\!\left(W\,\mathbf{x}(t-1) + W_{\mathrm{in}}\,
+\mathbf{u}(t)\right)$ with fixed random $W$ and $W_{\mathrm{in}}$, and
+the trained object is only $\hat{\mathbf{y}}(t) = W_{\mathrm{out}}\,
+\mathbf{x}(t)$. The echo state property, guaranteed in practice by
+keeping the spectral radius of $W$ below one, says that the state is
+asymptotically a function of the input history alone
+\citep{jaegerhaas2004}. The price is a
+large set of hyperparameters (reservoir size, spectral radius, sparsity,
+input scaling), dependence on the random initialisation, and a warm-up
+period. \citet{gauthier2021} removed the random network and replaced it
+with a nonlinear vector autoregression built from polynomial features of
+delayed inputs, calling the construction Next Generation Reservoir
+Computing. On the standard chaotic benchmarks they report forecasts
+competitive with classical reservoirs orders of magnitude larger, at a
+small fraction of the training cost, which is what makes the
+construction attractive for a replication-heavy study. Given $\mathbf{X}_t \in \mathbb{R}^d$, the delay vector with
+$k$ delays spaced by $s$ is
+\begin{equation}
+\mathbf{O}_{\mathrm{lin}}(t) = \mathbf{X}_t \oplus \mathbf{X}_{t-s} \oplus
+\cdots \oplus \mathbf{X}_{t-(k-1)s},
+\end{equation}
+which has $dk$ elements ($\oplus$ is concatenation). The quadratic library
+holds the unique pairwise products, $dk(dk+1)/2$ of them rather than
+$(dk)^2$ since $x_i x_j = x_j x_i$, and the prediction is a linear
+readout:
+\begin{equation}
+\mathbf{O}_{\mathrm{total}}(t) =
+\begin{bmatrix}
+1 \\ \mathbf{O}_{\mathrm{lin}}(t) \\ \mathbf{O}_{\mathrm{nonlin}}^{(2)}(t)
+\end{bmatrix},
+\qquad
+\hat{\mathbf{X}}_{t+1} = \mathbf{W}_{\mathrm{out}}\,
+\mathbf{O}_{\mathrm{total}}(t).
+\end{equation}
+The model is linear in its parameters but nonlinear in the input, and
+$\mathbf{W}_{\mathrm{out}}$ is computed by ridge regression to balance fit
+against stability. Writing $O$ for the matrix whose columns are the
+feature vectors and $Y$ for the targets, the ridge solution is
+$W_{\mathrm{out}} = Y\,O^{\top}\left(O\,O^{\top} +
+\beta I\right)^{-1}$, a single linear solve. Figure~\ref{fig:ngrc}
+summarises the architecture and the free-running mode in which the
+prediction is fed back as the next input.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.95\textwidth]{figs/fig_ngrc.pdf}
+\caption{The NG-RC architecture. The observed series is packed into a
+delay vector, expanded into constant, linear and quadratic features, and
+mapped to the next value by a linear readout trained with ridge
+regression. In free-running mode the model's own prediction re-enters as
+input, which is where wrong dynamics become visible.}
+\label{fig:ngrc}
+\end{figure} Compared with a classical reservoir there is far less
+noise and no warm-up, and the trained coefficients can be analysed
+directly. On chaotic benchmarks the record is strong: reservoir
+computers reproduce the spatiotemporal dynamics of the
+Kuramoto--Sivashinsky equation far beyond the training horizon
+\citep{pathak2018}, infer unmeasured variables of a chaotic system from
+the measured ones \citep{lu2017}, and remain competitive when the
+readout is trained by backpropagation through time instead
+\citep{vlachas2020}. Physical implementations are
+an active field of their own \citep{tanaka2019}.
+
+Reservoirs have reached financial data, but the treatment is incomplete.
+\citet{grigoryeva2014} used time-delay reservoirs to forecast conditional
+covariances of GARCH-type synthetic processes and realised volatilities
+computed from intraday quotes, with forecast error as the measure of
+success. Their finding was nuanced: the reservoir was competitive with
+econometric benchmarks but not decisively better, and the ranking moved
+with the dataset and the error measure, an early sign that one-step
+error is a coarse instrument for these questions. \citet{dossantos2025} combine a classical reservoir with the
+Hurst exponent, computed by rescaled-range analysis over overlapping
+100-day windows, to forecast next-day closing values of eleven stock
+indices, reporting smaller errors and larger $R^2$ than LSTM, ARIMA,
+bidirectional LSTM and transformer models in most cases. The study
+connects reservoirs with long-range dependence, but the target is the
+price level rather than volatility, $R^2$ on such a persistent series is
+not informative by itself, no na\"ive forecast is included in the
+comparison, and the hyperparameter choices differ across models.
+\citet{li2026} push in yet another direction, forecasting realised
+volatility with a quantum reservoir; notably, their quantum model is
+statistically tied with classical benchmarks on the standard confidence
+sets, so even there the interesting question is what the model has
+learned rather than its headline error. A tie in forecast error between
+two models with completely different internal dynamics is the cleanest
+possible evidence that the error alone cannot tell us what a model
+knows. All of this work ends at forecast
+error: what does the reservoir know, and how does it behave when left to
+run on its own?
+
+\subsection{Tools from nonlinear time series analysis}
+
+Asking what a model has learned requires tools that compare dynamics, not
+just errors. Nonlinear time series analysis supplies them
+\citep{kantzschreiber2004}. Takens' embedding theorem
+\citep{takens1981} shows that the geometry of a deterministic system can
+be reconstructed from a single observed series through delay vectors:
+for a scalar $x_t$, the points $(x_t, x_{t-\tau}, \dots,
+x_{t-(m-1)\tau})$ unfold the attractor up to a smooth change of
+coordinates once $m$ is large enough, and
+\citet{grassberger1983} gave the standard algorithm for measuring the
+dimension of the reconstructed attractor. Lyapunov exponents measure the
+rate at which nearby states separate: the largest,
+$\lambda_{\max} = \lim_{t \to \infty} \frac{1}{t} \ln |\delta\mathbf{x}_t
+/ \delta\mathbf{x}_0|$, is positive for chaos and negative for
+contracting dynamics, and finite-time exponents give a local,
+time-resolved version of the same quantity along a trajectory. For a
+map, each exponent is a long-run average of the stretching produced by
+the product of Jacobians along an orbit, so the Jacobian of a learned
+map is not an arbitrary object to study: it is exactly the object
+through which dynamical-systems theory reads stability
+\citep{kantzschreiber2004}. The spectral radius of one Jacobian is the
+local, instantaneous analogue of the same measurement, which is the form
+this dissertation uses. Memory can be quantified
+through autocorrelation decay, the Hurst exponent \citep{hurst1951}, or
+detrended fluctuation analysis \citep{peng1994}, which measures the
+growth of fluctuations $F(n) \propto n^{a}$ of the integrated series
+over windows of length $n$, with $a > 1/2$ signalling persistent
+correlations. The correlation dimension, in particular,
+estimates how the number of attractor points inside a ball scales with
+the ball's radius, and a saturating value as the embedding dimension
+grows is the classical signature of low-dimensional dynamics
+\citep{grassberger1983,kantzschreiber2004}. These quantities are
+properties of the process, not of a particular forecast, which is exactly
+what a certification test needs. Agent-based work such as
+\citet{luxmarchesi1999} also reminds us that clustering and heavy tails
+can emerge from simple interacting components, so reproducing stylised
+facts is necessary but not sufficient evidence that a model has the right
+mechanism. A final tool guards against reading structure into noise:
+the surrogate-data method of \citet{theiler1992} generates artificial
+series that share the data's linear properties but destroy any
+nonlinear structure, and a measured quantity is trusted only if it
+differs between the data and its surrogates. The same logic, compare
+against a null that preserves the trivial explanation, runs through the
+whole methodology of this dissertation.
+
+\subsection{How forecasts are compared}
+
+Even the forecasting part of this dissertation needs better accounting
+than a single error table. \citet{dieboldmariano1995} give the standard
+test for equal predictive accuracy between two models: for the loss
+series $d_t = L(e_t^{(1)}) - L(e_t^{(2)})$ formed from the two models'
+errors, the statistic $\bar d / \sqrt{\widehat{\mathrm{Var}}(\bar d)}$,
+with a long-run variance estimate, is asymptotically standard normal
+under the null;
+\citet{hansen2005} extends the comparison to many models: his test for
+superior predictive ability asks whether any model in a pool beats a
+benchmark, and bootstraps studentised loss differences so that the data
+mining a large comparison invites is priced into the null. The model
+confidence set of \citet{hansenlundenason2011} takes the final step:
+rather than crowning one winner, it eliminates models until only a set
+of statistically indistinguishable ones remains, which is the honest
+answer whenever several models tie. And
+\citet{patton2011} shows which loss functions remain consistent when
+volatility itself is only observed through an imperfect proxy such as
+realised variance: with an unbiased proxy, squared error and the QLIKE
+loss, $\log \hat v + \tilde\sigma^2 / \hat v$ for a variance forecast
+$\hat v$ and proxy $\tilde\sigma^2$, rank competing forecasts the same
+way the unobservable truth would. When the object of interest is a risk
+measure rather than a point forecast, loss comparison gives way to
+coverage testing: the binomial exceedance test of \citet{kupiec1995},
+the standard backtest for value-at-risk, is a close statistical cousin
+of the exact binomial bound this dissertation certifies with. These
+results set the ground rules for any claim that
+one model forecasts better than another, and they apply with extra force
+to machine-learning comparisons, where the number of tried architectures
+is usually large and unreported.
+
+\subsection{The gap}
+
+The issue is not that the field needs another forecast. A model can
+forecast excellently and still fail to reproduce the process behind the
+persistence or asymmetry of volatility, and a good one-step forecast says
+little about what happens when the model's own output is fed back as
+input. Even the studies that combine reservoirs with nonlinear dynamics,
+such as \citet{dossantos2025}, measure quality in pricing errors.
+
+What the literature suggests instead is a combination of techniques in
+which no single technique is treated as a complete description of
+volatility. ARCH and GARCH give simple controls; HAR-RV gives a reliable
+multi-horizon benchmark; path-dependent models give history-based
+nonlinear feedback with signed returns; NG-RC provides a mechanism by
+which such terms become part of an explicit polynomial map. It is open
+whether the shared mathematical structure of NG-RC and path-dependent
+models is enough to reproduce the known properties from noisy data. The
+purpose here is neither to prove that markets are generated by a
+low-dimensional deterministic system nor to claim trading profits. The
+question is whether a simple, data-efficient nonlinear model can identify
+the structure of volatility dynamics, simulate it on its own, and provide
+a meaningful way to measure stability. The plan is to start with
+simulations of a path-dependent process, with GARCH as a control, to test
+whether parameters can be recovered; then to move to empirical volatility,
+with daily, weekly and monthly lags including consecutive ones, benchmarked
+against HAR-RV and other econometric and machine-learning models; and
+finally to study the trained parameters, the behaviour of the simulated
+series, and the usefulness of a stability index derived from Jacobian
+analysis. Framed this way, the study sits inside the classical
+system-identification tradition \citep{ljung1999}: a dynamical system
+is learned from its output, and the learned model is then required to
+reproduce the system's key properties. The difference is that here the
+model class itself is learned rather than parametric, so validation
+cannot be inherited from the class and has to be designed.
+
+Simulation is what makes this program possible. On real data, evaluation
+confounds two errors: the model's error and the measurement error of the
+volatility proxy, since realised measures are themselves noisy estimates
+of a latent object \citep{andersen1998,andersen2001}. A model can look
+right because the proxy is wrong. In simulation the true $\sigma_t$ is
+known exactly, so the comparison isolates estimation error, the only
+error a certification study is about. Table~\ref{tab:map} collects the
+map this review has drawn.
+
+\begin{table}[!htb]
+\centering
+\small
+\begin{tabular}{p{2.6cm}p{4.0cm}p{3.6cm}p{3.4cm}}
+\hline
+Approach & What it assumes & What it explains well & What it cannot
+show \\
+\hline
+GARCH family & one-step recursion in past news and variance & clustering,
+persistence, leverage (with sign terms) & long memory; whether a learned
+model has the same dynamics \\
+HAR-RV & three fixed horizons of
+realised variance & most of the persistence with four parameters & any
+mechanism; it is a regression, not a generator \\
+Rough / path-
+dependent & power-law memory kernels, fractional noise & the scaling of
+volatility increments; joint SPX--VIX smiles & a trained model's internal
+stability \\
+Deep learning & flexible recurrence or dilated
+convolutions & small, inconsistent forecast gains & what the network
+has learned about the process \\
+NG-RC & polynomial features of
+delays, linear readout & interpretable map; closed-form Jacobian &
+untested: the open question of this dissertation \\
+\hline
+\end{tabular}
+\caption{The state of the field in one view. Each row summarises a
+family reviewed above; the last column is the gap this work addresses.}
+\label{tab:map}
+\end{table}
+
+\newpage
+
+% =====================================================================
+\section{Methodology}
+
+The work has three stages. First, the model is certified on synthetic
+data where the truth is known. Second, any failure is taken apart with
+diagnostics that separate bias from noise. Third, the model is repaired,
+one factor at a time, and re-certified under the same protocol.
+Figure~\ref{fig:pipeline} shows the full loop; this section describes
+each stage in turn. Table~\ref{tab:notation} collects the notation.
+
+\begin{table}[!htb]
+\centering
+\small
+\begin{tabular}{cl}
+\hline
+Symbol & Meaning \\
+\hline
+$\sigma_t^2$ & conditional variance of the return at time $t$ \\
+$\varepsilon_t$ & return innovation, $\varepsilon_t = \sigma_t z_t$ \\
+$z_t$ & standardised innovation, mean zero, unit variance \\
+$\omega,\alpha,\beta$ & GARCH(1,1) level, news and persistence parameters \\
+$p$ & GARCH persistence $\alpha+\beta$, the certified quantity \\
+$k$ & number of delays in the NG-RC feature vector (44 in the validation run) \\
+$\rho$ & target spectral radius of the delay block (the NG-RC $\gamma$) \\
+$\lambda$ & ridge penalty in the linear readout \\
+$J$ & Jacobian of the trained map at a trajectory point \\
+$\rho(J)$ & spectral radius of $J$; the certified persistence \\
+$q_L$ & one-sided lower 95\% bound on the per-setting recovery rate \\
+\hline
+\end{tabular}
+\caption{Notation. The first block belongs to the data-generating
+process; the rest belong to the estimator and the certificate.}
+\label{tab:notation}
+\end{table}
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.98\textwidth]{figs/fig_pipeline.pdf}
+\caption{The certification loop. Ground truth is simulated, the model is
+trained under frozen settings, and the learned Jacobian is tested
+against a locked acceptance criterion. A failure is diagnosed, repaired
+one factor at a time, and re-certified under the same protocol; a pass
+moves the protocol to the next model or the next invariant.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Ground truth by simulation}
+
+The controlled stage uses two generators. The first is a GARCH$(1,1)$
+control,
+\begin{equation}
+\varepsilon_t = \sigma_t z_t, \qquad
+\sigma_t^2 = \omega + \alpha\,\varepsilon_{t-1}^2 + \beta\,\sigma_{t-1}^2,
+\qquad z_t \sim \mathrm{i.i.d.},
+\end{equation}
+whose persistence $p = \alpha + \beta$ is known exactly. Its
+unconditional variance is $\bar\sigma^2 = \omega/(1-\alpha-\beta)$ and
+its relaxation time is $\tau = -1/\ln(\alpha+\beta)$, so the parameter
+the test targets also controls how quickly shocks die. The second is the
+path-dependent volatility process of \citet{guyonlekeufack2023}, in
+which the volatility is a direct functional of the whole return path.
+In the discrete form used for simulation this reads
+\begin{equation}
+r_t = \sigma_t z_t, \qquad
+\sigma_t = \beta_0 + \beta_1 \sum_{j \geq 1} K^{(1)}_j\, r_{t-j}
++ \beta_2 \sqrt{\sum_{j \geq 1} K^{(2)}_j\, r_{t-j}^2},
+\qquad z_t \sim \mathrm{i.i.d.},
+\end{equation}
+with power-law kernels: the history enters directly,
+not through a one-step recursion, and the randomness enters through the
+return path itself. Both are choices,
+not conveniences. GARCH is the benchmark the econometrics literature
+already understands, and the path-dependent process is the nonlinear
+alternative whose feedback structure NG-RC should, in principle, be able
+to express. The four frozen settings of the validation run are all
+GARCH, with persistence values near $0.95$ and $0.98$, close to what is
+estimated on daily equity data; the Guyon--Lekeufack cell follows the
+identical protocol. One difference is stated plainly: the GARCH
+recursion carries its persistence in closed form, the path-dependent
+generator does not, so the recovery target for that cell is derived
+analytically, by linearising the generator around its stationary point.
+Write $S_t = \sum_{j \geq 1} K^{(2)}_j\, x_{t-j}$ for the magnitude
+channel, with $x_t = r_t^2$, $\bar S$ its stationary mean and
+$\sigma^* = \beta_0 + \beta_2 \sqrt{\bar S}$ the stationary volatility
+level. Linearising the square root about $\bar S$ and conditioning on
+the squared-return path alone, the signed channel drops out at first
+order because the innovations are symmetric, and the one-step
+conditional mean of $x$ becomes a linear functional of the delay vector,
+\begin{equation}
+\mathbb{E}[x_{t+1} \mid x_t, x_{t-1}, \dots] \;\approx\;
+\mathrm{const} + \sum_{j \geq 1} d_j\, x_{t-j+1},
+\qquad
+d_j = \frac{\sigma^*\,\beta_2}{\sqrt{\bar S}}\, K^{(2)}_j
++ \beta_1^2\,\bigl(K^{(1)}_j\bigr)^2 .
+\end{equation}
+The two terms are the two channels of the generator: the magnitude
+kernel enters linearly, the signed kernel through its square, because
+only magnitudes are visible in $x$. The stationary moments are pinned by
+the parameters through a scalar fixed-point equation,
+$\bar x\,\bigl(1 - \beta_1^2 \sum_j (K^{(1)}_j)^2\bigr) =
+\bigl(\beta_0 + \beta_2 \sqrt{\bar x \sum_j K^{(2)}_j}\bigr)^2$,
+so every $d_j$ is a function of the generator's parameters alone and no
+simulation enters the definition. The recovery target is the dominant
+relaxation rate of this linear map: the largest root $p^*$ of
+\begin{equation}
+\sum_{j \geq 1} d_j\, p^{-j} = 1,
+\end{equation}
+the exact analogue of $\alpha + \beta$ for the control. It is computed
+once from the frozen parameters and locked with the protocol before any
+model is trained. Because the parameters of both processes are set by hand,
+every recovery question has an exact answer, and no part of the ``truth''
+needs to be estimated. Two working rules keep the simulation honest.
+Each dataset is generated after a burn-in long enough for the process to
+forget its initial condition, so that no estimate is contaminated by
+start-up transients. And every random seed is fixed and recorded, so
+that any figure or number in the study can be reproduced exactly.
+
+The design of the controlled stage belongs to the simulation-based
+calibration tradition \citep{talts2020sbc}: when ground truth is
+available by construction, a procedure should be judged by whether it
+recovers that truth under a fixed criterion, applied identically in
+simulation and in deployment. The protocol of the next section is the
+frequentist version of that idea. Volatility paths are simulated from a
+known generator, the learned model must recover a known dynamical
+quantity at a rate not meaningfully below a true-model positive
+control, and the pass count is read against an exact binomial law, with
+the tolerance calibrated to what the control achieves. \citet{talts2020sbc} warn that calibration
+checks averaged over a prior can miss failures that appear only in
+particular regions of the data. The protocol answers that warning
+structurally, because nothing is averaged: each generator, each
+persistence level and each invariant carries its own certificate, so a
+conditional failure is a failed certificate, not a diluted average.
+
+\subsection{A locked certification protocol}
+
+The central design choice is that the acceptance criteria are fixed
+before any data are generated, and are not adjusted afterwards. A tolerance fixed in absolute terms hides a
+sampling problem: near the unit root even the best estimator of
+persistence is imprecise, so an absolute band can be too tight for the
+truth itself to pass. The protocol therefore runs a positive control
+alongside the model \citep{boger2026}. For the GARCH control this is
+the quasi-maximum-likelihood fit of the true model, put through the
+identical pipeline: the same series length, the same split and the same
+number of replications. The locked tolerance is calibrated to what the
+control achieves, its half-width set from the control's own sampling
+spread, so that the control passes at a pre-decided reference rate.
+Certification is then non-inferiority to that control: the model's
+estimates must land inside the calibrated band in more than $90\%$ of
+independent datasets in every pre-decided setting, the same requirement
+the control itself meets. Success is recovery of the parameter: the
+estimate must sit inside the band, and no forecast error of any kind
+enters the criterion. The required rate is checked with an exact binomial
+confidence bound \citep{clopperpearson1934}, not a normal approximation,
+so that the uncertainty of the pass rate itself is accounted for. The
+bound is one-sided by choice: the certificate fails in only one
+direction, a recovery rate that is too low, so the error budget is
+spent where the risk lies rather than split across two tails.
+Concretely, if $s$ of $n$ independent datasets pass, the one-sided lower
+$95\%$ bound $q_L$ is defined by
+\begin{equation}
+\sum_{j=s}^{n} \binom{n}{j}\, q_L^{\,j}\, (1-q_L)^{\,n-j} = 0.05,
+\end{equation}
+and certification requires $q_L > 0.90$ in every pre-decided setting.
+The size of the run was chosen against this rule. At $n = 1{,}500$ the
+bound clears $0.90$ once at least $1{,}370$ datasets fall inside the
+band, a pass fraction of $91.3\%$, and the bound's half-width around a
+$90\%$ rate is about $1.5$ percentage points, fine enough to separate a
+true recovery rate of $90\%$ from one of $93\%$. The test is strict in
+both directions: a model that truly recovers the parameter $89\%$ of the
+time passes with probability below one in five hundred, while a model
+that truly recovers $93\%$ of the time passes with probability $99.4\%$.
+Because the band is calibrated so that the control's own recovery rate
+sits at the reference level, clearing the same bound is a
+non-inferiority statement: the model's recovery rate lies within the
+bound's resolution of the best rate any estimator achieves. The earlier
+absolute tolerance, ten percent of the gap $1-p$, is kept as a
+descriptive diagnostic of how far the estimates sit from the truth in
+absolute terms; it no longer gates certification.
+Figure~\ref{fig:band} illustrates the test schematically. The
+validation run used four frozen settings with $1{,}500$ independent
+datasets each, $6{,}000$ in total. Each dataset is an independent
+simulated series of $T = 20{,}000$ daily steps, generated after a
+burn-in of $1{,}000$ steps; the first $70\%$ of a series trains the
+readout and the remainder evaluates it. The two counts are easy to
+confuse, so they are stated once, plainly: $1{,}500$ is the number of
+replications per setting, not the length of any series. Nothing was
+retuned between settings,
+and no run was stopped early or repeated because of its result. An
+earlier pilot was kept strictly exploratory: it informed the design, and
+the setup was frozen before the fresh validation began. Read in
+econometric terms, the certificate is a moment condition with an exact
+sampling law under replication. Moment-based estimation of volatility
+models is classical \citep{zhangwang2023}; the difference is that the
+moment certified here is dynamical, the recovery of a known parameter,
+rather than distributional.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.95\textwidth]{figs/fig_band.pdf}
+\caption{Schematic of the acceptance test at $p = 0.95$. Each point is
+one replication's estimate $\hat{p}$; the shaded band is the locked
+tolerance, calibrated to the positive control, and the drawn width is
+illustrative rather than to scale. Left: the pattern a
+certified model would show. Right: the pattern a failing model shows, estimates centred below
+the truth and scattered far outside the band.}
+\label{fig:band}
+\end{figure} The point of
+these rules is that success and failure are decided by the protocol, so
+that a failure means something about the model rather than about the
+analyst's patience.
+
+\subsection{The estimator and the Jacobian}
+
+The model under test is NG-RC \citep{gauthier2021}. The input is a fixed
+vector of past values of one series, and in the controlled stage that
+series is the squared returns $x_t = r_t^2$ the generator emits, the
+realised measure of the simulation. The latent variance path defines
+the target and is never shown to the model: the only noise in the input
+is the process's own innovation, there is no further measurement error,
+and the noise-contaminated case is taken up with the scope
+limitations. The feature library collects
+constant, linear and quadratic combinations of these delays; and the
+readout is a single linear map trained by ridge regression, which has a
+closed-form solution and one penalty hyperparameter. All hyperparameters,
+the number of delays, the training length and the penalty, are chosen
+once and frozen across every setting of the validation, so that any
+difference in outcomes is a property of the data-generating process and
+not of the tuning. Training is
+therefore cheap and exactly reproducible, which is what makes large
+replication studies like the one above practical. The validation run
+reported here used $k = 44$ consecutive daily delays with linear
+features. Writing the trained map as $\hat x_{t+1} = f(x_t,
+\dots, x_{t-k+1})$, the Jacobian entries are $J_{ij} = \partial f
+/ \partial x_{t-j+1}$; because $f$ is polynomial in its arguments,
+each entry is available in closed form, and for a quadratic library each
+entry is an affine function of the current state. The conditional
+expectation $\mathbb{E}[x_{t+1} \,|\, x_t, x_{t-1}, \dots]$ is the
+conditional variance path itself, so a delay map on squared returns
+approximates the same contraction the GARCH recursion encodes in
+$\alpha+\beta$; this is the sense in which the spectral radius
+$\rho(\hat J)$ targets the persistence. The learned relaxation time is
+$\hat\tau = -1/\ln\rho(\hat J)$, directly comparable with the
+$\tau = -1/\ln(\alpha+\beta)$ of the control.
+
+The certificate comes from the learned dynamics, not the forecast error.
+The spectral radius is the right first object for this. A map that
+forgets its initial condition must contract perturbations, which is
+$\rho < 1$; the same condition, one ring further along, is the echo
+state property that makes classical reservoirs well-defined
+\citep{jaegerhaas2004}, and the approximation theory that licenses
+reading dynamics off a contracting, input-driven map is by now rigorous
+\citep{harthookdawes2021,hart2024}. And how far $\rho$ sits below one is the
+persistence: it sets the rate at which shocks to the learned system die,
+which is precisely the quantity $\alpha+\beta$ encodes in the control.
+Because the trained map is an explicit polynomial in the delays, its
+Jacobian can be computed in closed form at any point of a trajectory.
+The persistence estimator is the spectral radius of this Jacobian,
+\begin{equation}
+\hat{p} \;=\; \rho\!\left(\widehat{J}\right),
+\end{equation}
+which plays the role that $p = \alpha + \beta$ plays in the control. A
+model that has truly reconstructed the dynamics should return $\hat{p}$
+near the true $p$; a model that has merely learned a good one-step
+forecast need not.
+
+Three clarifications keep the estimator honest. First, it never
+free-runs: the Jacobian is evaluated at states of the observed
+validation series, and no multi-step rollout enters the certificate, so
+the well-known divergence of closed-loop simulations is irrelevant to
+it. Second, the certificate compares the learned radius with the known
+recursion parameter of a simulated process; it is not an estimate of a
+Lyapunov exponent of a stochastic system, a quantity with its own strict
+definition through products of Jacobians along a trajectory
+\citep{nelson1990}. Third,
+where the learned map is used to generate paths rather than to read a
+parameter, modelling log-volatility keeps the variance positive by
+construction. The certificate, however, belongs to the volatility map:
+$\alpha+\beta$ is the contraction rate of the variance recursion, and a
+map trained in log space has a different Jacobian, whose spectral
+radius is not $\alpha+\beta$. The validation therefore trains and reads
+the estimator on the squared-return series; a log-space variant would first
+need its target redefined in log space, measured from the true
+generator's log-space response.
+
+Why eigenvalues at all is a fair question, and it has a principled
+answer. A reservoir computer with fixed nonlinear features and a
+trained linear readout is a dictionary of observables whose induced
+dynamics are linear in the readout, which is exactly the structure of a
+finite-dimensional approximation of the Koopman operator
+\citep{gulinamauroy2021,guyangshi2026}. Under this reading the
+eigenvalues of the learned map approximate Koopman eigenvalues, the
+growth and decay modes of the dynamics, so reading relaxation times off
+the Jacobian spectrum is not a heuristic but the natural spectral
+object of the model class. The reservoir's memory, controlled by its
+spectral radius, determines which of these modes remain observable
+\citep{guyangshi2026}. The operator view is stated for deterministic
+flows, and the volatility processes here are noise-driven; the claim is
+only that the learned map plays the role of the effective deterministic
+skeleton of the system, the framing used throughout this chapter.
+
+The spectral certificate also has an econometric reading. In a
+GARCH$(1,1)$ the impact of a variance shock decays at the rate
+$\alpha+\beta$, and the volatility impulse response function
+\citep{hafnerherwartz2006,hafnerherwartz2023} makes that decay the
+object of study in parametric form. The dominant eigenvalue of the
+learned Jacobian is the same quantity estimated nonparametrically: a
+one-period volatility impulse response, read off the fitted map instead
+of a GARCH likelihood. The certificate that $\rho(\hat{J})$ recovers
+$\alpha+\beta$ within the locked band is therefore a data-driven VIRF
+check, with the closed-form GARCH response as its parametric benchmark.
+The asymmetric responses of
+\citet{hafnerherwartz2023}, derived for multivariate GARCH and read
+here at the univariate level, are the
+impulse-response counterpart of the leverage asymmetry the remaining
+invariants test.
+
+\subsection{Diagnostics: separating bias from width}
+
+When a model fails, the failure is split into two parts before any
+repair is attempted. Given $n$ replications with estimates $\hat p_1,
+\dots, \hat p_n$, write $\bar p$ for their mean and $s$ for their
+sample standard deviation. The first part is a shifted centre: the mean
+estimate sits away from the truth, measured in Monte Carlo standard
+errors, $|\bar p - p| / (s/\sqrt{n})$, so that ``away'' has a
+quantitative meaning. The second part is excess width: $s$ itself is
+large compared with the half-width of the tolerance band.
+Figure~\ref{fig:diag} shows the two failure shapes. A shifted centre points to a
+systematic distortion, such as shrinkage; excess width points to missing
+structure, such as truncated memory. A third possibility is irreducible
+sampling noise: near the unit root even the best estimator scatters,
+and the positive control measures that floor directly, so width is read
+as missing structure only when it exceeds what the control achieves.
+Outside the controlled stage a further channel appears: a noisy
+realised-volatility proxy attenuates the estimated persistence, which
+shifts the centre downward. Two robustness checks accompany the
+decomposition: the tolerance band is halved and doubled to confirm the
+conclusion does not hinge on the exact tolerance, and an independent
+pilot is rerun to confirm the failure replicates. Persistence near one
+is a classical hard inference problem, and the standard econometric
+answers, median-unbiased estimation \citep{andrews1993} and the grid
+bootstrap \citep{hansen1999grid}, are built for least-squares
+autoregressions. The estimator here is a ridge-shrunk spectral radius
+of a companion-like matrix, so those pivots do not transfer directly;
+any bootstrap in this setting must resample the ridge estimator itself.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.95\textwidth]{figs/fig_diagnostics.pdf}
+\caption{The diagnostic split, schematic. Left: a shifted centre, where
+the estimates cluster tightly but away from the truth. Right: excess
+width, where the estimates are centred correctly but scatter far beyond
+the locked band (shaded). The two failures call for different repairs.}
+\label{fig:diag}
+\end{figure} These diagnostics are
+reported as post-hoc analysis. They were not part of the locked
+criteria, and they are used to explain failure, not to reclassify it.
+
+One caveat belongs with any eigenvalue-based readout. The Jacobian of a
+delay-embedding model is companion-like and strongly non-normal, and in
+non-normal systems perturbations can grow transiently even when every
+eigenvalue lies inside the unit circle. Recent work shows this is not a
+corner case: non-normal amplification in random multiplicative processes
+can generate heavy-tailed, clustered fluctuations far from spectral
+instability \citep{troude2025,troude2026}. The certificate is protected
+at the control level, where the truth it compares against is a scalar
+contraction rate, but the caveat bites when the estimator is read as a
+description of transient behaviour. A trajectory-level growth check,
+tracking how the learned map actually amplifies perturbations over
+several steps, is the stricter diagnostic, and it is recorded here as a
+planned addition rather than a claim.
+
+\subsection{Repair as a designed experiment}
+\label{sec:repair}
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=0.95\textwidth]{figs/fig_repair.pdf}
+\caption{The repair experiment. Each candidate repair is applied on its
+own, and the repaired model re-enters the same locked protocol. A pass
+measures the repair; a fail sharpens the negative result.}
+\label{fig:repair}
+\end{figure}
+
+Repairs are tested one factor at a time. If several things change at
+once, an improvement cannot be attributed, and a failure cannot be
+diagnosed further. Three repairs follow from the diagnostics, and each
+carries its own testable signature: a repair is believed only if the
+failure pattern changes in the direction its hypothesis predicts.
+Table~\ref{tab:repairs} summarises the design.
+
+\begin{table}[!htb]
+\centering
+\small
+\begin{tabular}{p{2.9cm}p{2.6cm}p{4.1cm}p{4.2cm}}
+\hline
+Repair & Targets & What changes & Signature if the hypothesis is right \\
+\hline
+1. Ridge sweep + debiasing & shifted centre & penalty on a log grid;
+bias measured against known truth & centre moves to the truth as the
+penalty falls; width unchanged \\
+2. Memory scan & excess width & delay
+span and layout; HAR-type aggregated inputs & scatter narrows; centre
+unchanged \\
+3. Objective change & centre and width & multi-step or
+invariant-matching training loss & long-horizon behaviour improves at
+similar one-step fit \\
+\hline
+\end{tabular}
+\caption{The repair experiment at a glance. Each repair is applied
+alone, aimed at one failure mode, and read through the change it should
+produce if its hypothesis is correct.}
+\label{tab:repairs}
+\end{table}
+
+\paragraph{1. Ridge shrinkage and debiasing.} The ridge penalty
+contracts the weights, and through them the spectrum of the learned
+Jacobian, so persistence is biased downward. The first repair sweeps the
+penalty on a logarithmic grid and retrains at each value. Because the
+truth is known in simulation, the bias can be measured directly as a
+function of the penalty, giving an empirical bias curve from which a
+debiased estimate is read off. If lowering the penalty moves the
+estimated persistence towards the truth, shrinkage is confirmed as the
+distortion; if it does not, the hypothesis is rejected cheaply and the
+factor is ruled out. This is the simulation version of a
+classical idea: the downward small-sample bias of estimated
+autocorrelations, and its analytic corrections, have been known in the
+time-series literature for seventy years
+\citep{marriottpope1954,kendall1954}.
+
+\paragraph{2. Memory structure.} A GARCH process remembers its whole
+past through its recursion, while a finite delay vector remembers only
+its own window. The second repair varies the delay span and compares
+short, long and non-uniform delay layouts; if longer or better-placed
+memory narrows the scatter of the estimates, truncation is confirmed as
+the source of the excess width. The linear memory capacity
+measure of \citet{jaeger2002} gives a way to quantify how much of the
+past a finite reservoir can retain at all. Non-uniform layouts of the
+daily--weekly--monthly kind used in Objective 2, or HAR-type aggregated
+inputs \citep{corsi2009}, inject long memory at the input side without
+growing the model.
+
+\paragraph{3. Training objective.} One-step error rewards the next value,
+not the long-run dynamics. The third repair replaces or augments the
+one-step loss: multi-step losses penalise the error of free-running
+rollouts, and invariant-matching penalties require simulated paths to
+match the autocorrelation or the marginal distribution of the data.
+Closely related stabilisation ideas are documented in the reservoir
+literature on chaotic and climate systems, including hybrid and
+correction schemes \citep{pathak2018,wikner2020}, systematic studies of
+which design choices control free-running performance \citep{platt2022},
+and noise-inspired regularisation that stabilises long-horizon
+prediction \citep{wikner2024}.
+
+Each repair is also a measurement. If debiasing alone moves the centre,
+shrinkage was the story, and the fix is cheap. If the memory scan
+narrows the scatter, the delay layout was too poor for the persistence
+being tested, and the repair cost is paid in design, not in data. If
+neither moves the numbers, the feature library itself lacks the
+nonlinearity the dynamics need, which is the strongest and most
+informative failure of the three, because it localises the limitation in
+the model class rather than in its settings.
+
+\subsection{Recertification}
+
+Every repaired model re-enters the same locked protocol, with the same
+settings, the same band and the same binomial bound. Improvement is not
+a better-looking forecast; it is a pass rate that meets the pre-decided
+requirement. Trying several repairs and reporting only the one that
+passes would quietly reopen the data-mining problem the locked design
+exists to close, so each repair is evaluated on its own, with its own
+binomial bound, and all outcomes are reported. This closes the loop: test, diagnose, repair, re-certify.
+If a repaired model passes, the protocol has measured the repair. If it
+still fails, the failure is now sharper, because the diagnostics have
+already ruled repairs in or out. Either outcome is a result. The loop
+then generalises: the same locked test can be pointed at any other
+learned model, an LSTM, a dilated-convolution network, a quantum
+reservoir, and each model's certificate or failure is comparable with
+every other's, because the yardstick never moved.
+
+\subsection{Scope and limitations}
+
+The protocol certifies recovery on the generators it is pointed at, and
+no further. GARCH$(1,1)$ and the Guyon--Lekeufack process represent two
+mechanisms, a one-step recursion and direct history dependence; they are
+test beds with known truth, not claims about what markets are. A pass
+says the model reconstructs these mechanisms; it says nothing about
+mechanisms not tested.
+
+Two further boundaries are stated plainly. The estimator and the
+certificate concern conditional-mean dynamics and their persistence;
+nothing here claims to recover the full conditional law of volatility.
+Distributional questions, quantiles, predictive intervals and tails,
+belong to future work with quantile or generative readouts, where the
+natural certificates are predictive-calibration checks and proper
+scoring rules such as the CRPS. And the
+certification stage runs on simulated series where the realised measure
+is observed exactly as generated, so no measurement-noise channel exists
+inside the experiment;
+extending the protocol to noise-contaminated observations, through
+filtering or a noise-robust loss, is a second line of future work.
+
+The tolerance is calibrated to the positive control rather than fixed
+in absolute terms. An absolute band, ten percent of the gap $1-p$ in
+the pilot design, bounds the distortion of the relaxation time, the
+quantity a physicist would read off the dynamics, but it can sit below
+the best estimator's own sampling spread near the unit root, in which
+case even the true model fails for reasons that have nothing to do with
+the model. Calibrating to the control removes that floor. The protocol
+does not depend on the particular calibration; it depends on the
+calibration being frozen. Likewise, the estimator tested here
+is one point in the NG-RC design space, a linear library over $k=44$
+consecutive delays with frozen hyperparameters. Conclusions about NG-RC
+as a class require the repair loop and wider sweeps, and the protocol is
+built to make those follow-ups cheap and comparable.
+
+Certification is per-invariant. A model can recover persistence and fail
+asymmetry, or pass on the GARCH control and fail on the path-dependent
+generator, and each outcome is a separate certificate. Finally, the
+real-data stages inherit the measurement error of realised measures:
+Objective 2 onwards compares against proxies, not truth, which is
+exactly why the controlled stage comes first and why its verdicts carry
+the most weight.
+
+Finally, a matter of process. The protocol, the locked criterion and
+the code are archived with timestamps in the project repository, which
+fixes their order relative to the results, but they were not entered in
+an independent public registry. That is a gap in form rather than in
+substance, and it is recorded here as one.
+
+\newpage
+
+% =====================================================================
+\section{Objectives and Hypotheses}
+
+\subsection{Overall aim}
+
+This dissertation investigates whether NG-RC can serve as a data-driven
+reconstruction of the effective deterministic dynamics of financial
+volatility, treated as a noise-driven nonlinear dynamical system. NG-RC
+is, however, only the first test case. The deeper object of study is the
+certification protocol itself: a model-agnostic procedure that tests a
+learned model of the dynamics on data where the truth is known, takes
+its failures apart with diagnostics, repairs them as a designed
+experiment, and re-certifies the result under unchanged criteria. What
+is demonstrated here on NG-RC can in principle be repeated on any model
+whose learned dynamics can be read off, through a Jacobian or an
+equivalent description. Rather than judging the model by one-step
+forecast error alone, it asks two questions, pursued respectively
+through Objective 1 and Objectives 2 and 3 below.
+
+\begin{enumerate}\renewcommand{\labelenumi}{\textbf{Q\arabic{enumi}.}}
+\item Does the learned model reproduce the physical
+signatures of volatility: relaxation timescales, memory and scaling, and
+the asymmetric response to gains and losses?
+\item Does the stability of the learned dynamics, measured through its
+Jacobian, carry meaningful information about changes in market regime at
+daily frequency?
+\end{enumerate}
+
+\subsection{Specific objectives}
+
+\paragraph{Objective 1: Validate recovery of dynamics on controlled
+systems.}
+Generate synthetic series from a GARCH process, as a control, and from a
+path-dependent volatility process of the Guyon--Lekeufack type, both
+written in a common Langevin-type stochastic-dynamics form. Test whether
+NG-RC recovers the known relaxation rates, feedback asymmetry and memory
+structure, and whether Jacobian-based relaxation times and contraction
+rates match the analytically known values. This step establishes what
+the method can and cannot recover from the noisy squared-return series
+of a known generator before it is applied to real markets.
+
+\paragraph{Objective 2: Reconstruct empirical volatility dynamics with a
+physically motivated delay structure.}
+Apply NG-RC to realised volatility, constructed from intraday returns,
+using daily, weekly and monthly delays, and consecutive delays, as a
+non-uniform delay embedding. Benchmark against HAR-RV, at least one
+econometric model (GJR-GARCH) and at least one machine-learning model,
+evaluated by out-of-sample forecast accuracy and by the interpretability
+of the trained coefficients.
+
+\paragraph{Objective 3: Construct and evaluate a physically grounded
+stability index.}
+Define a stability index from the Jacobian of the trained model, using
+the spectral radius and the local contraction rates read off the
+Jacobian along the trajectory, and compute it on rolling windows. Assess whether the
+index varies systematically across two stress windows fixed in
+advance, the 2008 financial crisis and the March 2020 COVID shock, with
+lead time and false-alarm rate as the pre-registered metrics, reported
+against a rolling realised-volatility threshold as the primary
+benchmark. The
+index is treated as a descriptive diagnostic of the learned dynamics, not
+as a trading or prediction tool.
+
+\paragraph{Objective 4: Diagnose, repair and re-certify the failures
+found in Objective 1.}
+The arc of the dissertation does not end at the test. Where the
+certification of Objective 1 fails, apply the diagnostics of Section 3.4
+to separate a shifted centre from excess width, and then run the repair
+experiment of Section 3.5: a ridge sweep with measured debiasing, a
+memory scan over delay layouts, and changes to the training objective,
+varied one factor at a time so that each effect is attributable.
+Re-certify every repaired model under the same locked protocol, so that
+improvement is defined by the pass rate and not by inspection. A repair
+that works, and a repair that fails in an informative way, are both
+results of the study.
+
+\subsection{Hypotheses}
+
+\begin{enumerate}\renewcommand{\labelenumi}{\textbf{H\arabic{enumi}.}}
+\item (Objective 1) The spectral radius of the learned Jacobian recovers
+the known persistence $\alpha + \beta$ of the GARCH control to within
+estimation error.
+\item (Objective 2) NG-RC with a signed quadratic library is
+out-of-sample competitive with HAR-RV, and a library with odd terms
+outperforms an even-only library in capturing the return--volatility
+asymmetry.
+\item (Objective 3) The stability index rises systematically in the
+pre-registered stress windows, the 2008 crisis and the March 2020 shock,
+with lead time and false-alarm rate fixed in advance and reported
+against a rolling realised-volatility threshold as the primary
+benchmark.
+\item (Objective 4) Under the unchanged locked protocol, the diagnostics
+attribute each certification failure to a specific cause, a shifted
+centre or excess width, and at least one of the three repairs then moves
+the GARCH-control pass rate monotonically upward, without relaxing the
+criterion. Crossing the locked acceptance band is sufficient for success
+but not required: an attributed, monotone improvement that still falls
+short of the band is a result of the study.
+\end{enumerate}
+
+\subsection{Closing remark: what to do when a model fails}
+
+A certification protocol is useful only if failure can be acted on. The
+methodology of Section~\ref{sec:repair} treats repair as a designed
+experiment: a ridge sweep with measured debiasing for a shifted centre,
+a memory scan for excess width, and multi-step or invariant-matching
+objectives when the training loss itself is the distortion. Each
+repaired model is then re-certified under the same locked protocol, so
+that improvement is measured rather
+than asserted.
+
+% =====================================================================
+\newpage
+\bibliographystyle{plainnat}
+\bibliography{dissertation_refs}
+
+\end{document}
